@@ -1,3 +1,6 @@
+[![npm version](https://img.shields.io/npm/v/@permission-protocol/sdk)](https://www.npmjs.com/package/@permission-protocol/sdk)
+[![Smoke Test](https://github.com/permission-protocol/reference/actions/workflows/smoke.yml/badge.svg)](https://github.com/permission-protocol/reference/actions/workflows/smoke.yml)
+
 # Permission Protocol — Reference
 
 Reference demo, standard, and CI examples for Permission Protocol.
