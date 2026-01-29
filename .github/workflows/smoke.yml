@@ -11,10 +11,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: reference-demo/pnpm-lock.yaml
       - run: pnpm install
         working-directory: reference-demo
-      - run: pnpm demo:run --scenario invalid-receipt
+      - run: pnpm demo:run --scenario invalid-receipt 2>&1 || true
         working-directory: reference-demo
-        continue-on-error: true  # Expected to fail without backend
+        # Expected to fail without backend - we just verify it runs
