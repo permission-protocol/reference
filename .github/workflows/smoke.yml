@@ -1,0 +1,20 @@
+name: Smoke Test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: reference-demo/pnpm-lock.yaml
+      - run: pnpm install
+        working-directory: reference-demo
+      - run: pnpm demo:run --scenario invalid-receipt
+        working-directory: reference-demo
+        continue-on-error: true  # Expected to fail without backend

@@ -1,0 +1,208 @@
+name: 'Permission Protocol Receipt Gate'
+description: 'Verify a Permission Protocol receipt before deployment. No receipt = No deploy.'
+author: 'Permission Protocol'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  receipt_id:
+    description: 'The receipt ID to verify'
+    required: true
+  pp_endpoint:
+    description: 'Permission Protocol API endpoint'
+    required: true
+  pp_api_key:
+    description: 'Permission Protocol API key (Bearer token)'
+    required: true
+  pp_tenant_id:
+    description: 'Permission Protocol tenant/company ID'
+    required: true
+  expected_decision:
+    description: 'Expected decision (APPROVED, DENIED, REQUIRES_APPROVAL). Default: APPROVED'
+    required: false
+    default: 'APPROVED'
+  expected_tool:
+    description: 'Expected tool name (optional verification)'
+    required: false
+  expected_operation:
+    description: 'Expected operation name (optional verification)'
+    required: false
+  fail_on_mismatch:
+    description: 'Fail the action if any check mismatches. Default: true'
+    required: false
+    default: 'true'
+
+outputs:
+  receipt_id:
+    description: 'The verified receipt ID'
+    value: ${{ steps.verify.outputs.receipt_id }}
+  decision:
+    description: 'The decision from the receipt'
+    value: ${{ steps.verify.outputs.decision }}
+  tool:
+    description: 'The tool from the receipt'
+    value: ${{ steps.verify.outputs.tool }}
+  operation:
+    description: 'The operation from the receipt'
+    value: ${{ steps.verify.outputs.operation }}
+  valid:
+    description: 'Whether all checks passed (true/false)'
+    value: ${{ steps.verify.outputs.valid }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch and Verify Receipt
+      id: verify
+      shell: bash
+      env:
+        PP_ENDPOINT: ${{ inputs.pp_endpoint }}
+        PP_API_KEY: ${{ inputs.pp_api_key }}
+        PP_TENANT_ID: ${{ inputs.pp_tenant_id }}
+        RECEIPT_ID: ${{ inputs.receipt_id }}
+        EXPECTED_DECISION: ${{ inputs.expected_decision }}
+        EXPECTED_TOOL: ${{ inputs.expected_tool }}
+        EXPECTED_OPERATION: ${{ inputs.expected_operation }}
+        FAIL_ON_MISMATCH: ${{ inputs.fail_on_mismatch }}
+      run: |
+        echo "::group::Fetching Receipt"
+        echo "Receipt ID: $RECEIPT_ID"
+        echo "Endpoint: $PP_ENDPOINT"
+        echo "::endgroup::"
+        
+        # Fetch receipt using Bearer token (consistent with SDK auth model)
+        HTTP_RESPONSE=$(curl -sf -w "\n%{http_code}" \
+          -H "Authorization: Bearer $PP_API_KEY" \
+          -H "X-PP-Tenant-Id: $PP_TENANT_ID" \
+          -H "Accept: application/json" \
+          "$PP_ENDPOINT/api/v1/receipts/$RECEIPT_ID" 2>&1) || {
+          echo "::error::Failed to fetch receipt: $RECEIPT_ID"
+          echo "::error::No receipt = No deploy. This is intentional."
+          echo "::error::Ensure the receipt exists and the API key has proper permissions."
+          exit 1
+        }
+        
+        # Parse response (last line is HTTP code)
+        HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
+        RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+        
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "::error::Receipt not found or access denied (HTTP $HTTP_CODE)"
+          echo "::error::No receipt = No deploy. This is intentional."
+          exit 1
+        fi
+        
+        # Extract fields from response
+        ACTUAL_DECISION=$(echo "$RESPONSE_BODY" | jq -r '.receipt.status // empty')
+        ACTUAL_RECEIPT_ID=$(echo "$RESPONSE_BODY" | jq -r '.receipt.receiptId // empty')
+        REASON_CODES=$(echo "$RESPONSE_BODY" | jq -r '.receipt.reasonCodes // [] | join(", ")')
+        
+        # Tool/operation: prefer authoritative fields, fall back to derived
+        # Check if authoritative fields exist (future-proofed)
+        AUTH_TOOL=$(echo "$RESPONSE_BODY" | jq -r '.receipt.tool // empty')
+        AUTH_OPERATION=$(echo "$RESPONSE_BODY" | jq -r '.receipt.operation // empty')
+        
+        # Check derived fields and parseOk
+        DERIVED_PARSE_OK=$(echo "$RESPONSE_BODY" | jq -r '.receipt.derived.parseOk // false')
+        DERIVED_TOOL=$(echo "$RESPONSE_BODY" | jq -r '.receipt.derived.tool // empty')
+        DERIVED_OPERATION=$(echo "$RESPONSE_BODY" | jq -r '.receipt.derived.operation // empty')
+        
+        # Use authoritative if present, otherwise derived
+        if [ -n "$AUTH_TOOL" ]; then
+          ACTUAL_TOOL="$AUTH_TOOL"
+        elif [ "$DERIVED_PARSE_OK" = "true" ]; then
+          ACTUAL_TOOL="$DERIVED_TOOL"
+        else
+          ACTUAL_TOOL=""
+        fi
+        
+        if [ -n "$AUTH_OPERATION" ]; then
+          ACTUAL_OPERATION="$AUTH_OPERATION"
+        elif [ "$DERIVED_PARSE_OK" = "true" ]; then
+          ACTUAL_OPERATION="$DERIVED_OPERATION"
+        else
+          ACTUAL_OPERATION=""
+        fi
+        
+        # Output values
+        echo "receipt_id=$ACTUAL_RECEIPT_ID" >> $GITHUB_OUTPUT
+        echo "decision=$ACTUAL_DECISION" >> $GITHUB_OUTPUT
+        echo "tool=$ACTUAL_TOOL" >> $GITHUB_OUTPUT
+        echo "operation=$ACTUAL_OPERATION" >> $GITHUB_OUTPUT
+        
+        echo "::group::Receipt Details"
+        echo "Receipt ID: $ACTUAL_RECEIPT_ID"
+        echo "Decision: $ACTUAL_DECISION"
+        echo "Tool: $ACTUAL_TOOL"
+        echo "Operation: $ACTUAL_OPERATION"
+        echo "Reason Codes: $REASON_CODES"
+        echo "::endgroup::"
+        
+        # Perform local comparisons
+        VALID="true"
+        
+        echo "::group::Verification Checks"
+        
+        # Check decision
+        if [ "$ACTUAL_DECISION" != "$EXPECTED_DECISION" ]; then
+          echo "::error::Decision mismatch"
+          echo "  Expected: $EXPECTED_DECISION"
+          echo "  Actual:   $ACTUAL_DECISION"
+          VALID="false"
+        else
+          echo "✓ Decision matches: $ACTUAL_DECISION"
+        fi
+        
+        # Check tool (if specified)
+        if [ -n "$EXPECTED_TOOL" ]; then
+          if [ -z "$ACTUAL_TOOL" ] && [ "$DERIVED_PARSE_OK" != "true" ]; then
+            echo "::warning::Cannot verify tool - requestJson parse failed and no authoritative field"
+            echo "  Expected: $EXPECTED_TOOL"
+            echo "  Actual:   (unavailable - parse failed)"
+            # Don't fail, but warn - schema may have evolved
+          elif [ "$ACTUAL_TOOL" != "$EXPECTED_TOOL" ]; then
+            echo "::error::Tool mismatch"
+            echo "  Expected: $EXPECTED_TOOL"
+            echo "  Actual:   $ACTUAL_TOOL"
+            VALID="false"
+          else
+            echo "✓ Tool matches: $ACTUAL_TOOL"
+          fi
+        fi
+        
+        # Check operation (if specified)
+        if [ -n "$EXPECTED_OPERATION" ]; then
+          if [ -z "$ACTUAL_OPERATION" ] && [ "$DERIVED_PARSE_OK" != "true" ]; then
+            echo "::warning::Cannot verify operation - requestJson parse failed and no authoritative field"
+            echo "  Expected: $EXPECTED_OPERATION"
+            echo "  Actual:   (unavailable - parse failed)"
+            # Don't fail, but warn - schema may have evolved
+          elif [ "$ACTUAL_OPERATION" != "$EXPECTED_OPERATION" ]; then
+            echo "::error::Operation mismatch"
+            echo "  Expected: $EXPECTED_OPERATION"
+            echo "  Actual:   $ACTUAL_OPERATION"
+            VALID="false"
+          else
+            echo "✓ Operation matches: $ACTUAL_OPERATION"
+          fi
+        fi
+        
+        echo "::endgroup::"
+        
+        echo "valid=$VALID" >> $GITHUB_OUTPUT
+        
+        # Fail if any check failed and fail_on_mismatch is true
+        if [ "$VALID" = "false" ] && [ "$FAIL_ON_MISMATCH" = "true" ]; then
+          echo ""
+          echo "::error::Receipt verification failed. Deploy blocked."
+          echo "::error::The receipt does not match expected criteria."
+          exit 1
+        fi
+        
+        if [ "$VALID" = "true" ]; then
+          echo ""
+          echo "✓ Receipt gate passed: $ACTUAL_RECEIPT_ID"
+          echo "  Decision: $ACTUAL_DECISION"
+        fi

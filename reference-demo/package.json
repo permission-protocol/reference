@@ -1,0 +1,40 @@
+{
+  "name": "permission-protocol-reference-demo",
+  "version": "1.0.0",
+  "description": "Reference demo showing Permission Protocol authority boundaries",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "demo": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "demo:run": "tsx src/index.ts",
+    "demo:spend": "tsx src/index.ts --scenario spend",
+    "demo:prod": "tsx src/index.ts --scenario prod",
+    "demo:message": "tsx src/index.ts --scenario message",
+    "demo:invalid": "tsx src/index.ts --scenario invalid-receipt",
+    "demo:trust": "tsx src/index.ts --scenario trust-tests",
+    "demo:all": "tsx src/index.ts --all"
+  },
+  "dependencies": {
+    "@permission-protocol/sdk": "^0.1.0-alpha.2",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "permission-protocol",
+    "authorization",
+    "ai-agents",
+    "demo"
+  ],
+  "license": "MIT"
+}

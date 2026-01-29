@@ -1,0 +1,114 @@
+# Example: Deploy with Permission Protocol Receipt Gate
+#
+# This workflow demonstrates how to block deployments without valid receipts.
+# 
+# Key points:
+# - The receipt_id comes from a previous step (agent creates receipt)
+# - The gate verifies the receipt matches expected criteria
+# - No receipt = No deploy (fail-closed)
+#
+# To use in your own project:
+# 1. Copy this workflow
+# 2. Set up the secrets (PP_ENDPOINT, PP_API_KEY, PP_TENANT_ID)
+# 3. Modify the receipt_id source based on your flow
+
+name: Deploy with Receipt Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      receipt_id:
+        description: 'Permission Receipt ID from your agent'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Step 1: Verify the receipt exists and is APPROVED
+      - name: Verify Permission Receipt
+        id: receipt-gate
+        shell: bash
+        env:
+          PP_ENDPOINT: ${{ secrets.PP_ENDPOINT }}
+          PP_API_KEY: ${{ secrets.PP_API_KEY }}
+          PP_TENANT_ID: ${{ secrets.PP_TENANT_ID }}
+          RECEIPT_ID: ${{ github.event.inputs.receipt_id }}
+        run: |
+          echo "Verifying receipt: $RECEIPT_ID"
+          
+          # Fetch receipt using Bearer token
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Bearer $PP_API_KEY" \
+            -H "X-PP-Tenant-Id: $PP_TENANT_ID" \
+            -H "Accept: application/json" \
+            "$PP_ENDPOINT/api/v1/receipts/$RECEIPT_ID") || {
+            echo "::error::Receipt not found: $RECEIPT_ID"
+            echo "::error::No receipt = No deploy. This is intentional."
+            exit 1
+          }
+          
+          # Extract decision
+          DECISION=$(echo "$RESPONSE" | jq -r '.receipt.status')
+          TOOL=$(echo "$RESPONSE" | jq -r '.receipt.tool // "unknown"')
+          OPERATION=$(echo "$RESPONSE" | jq -r '.receipt.operation // "unknown"')
+          REASON_CODES=$(echo "$RESPONSE" | jq -r '.receipt.reasonCodes // [] | join(", ")')
+          
+          echo "Receipt Details:"
+          echo "  Decision: $DECISION"
+          echo "  Tool: $TOOL"
+          echo "  Operation: $OPERATION"
+          echo "  Reason Codes: $REASON_CODES"
+          
+          # Verify decision is APPROVED
+          if [ "$DECISION" != "APPROVED" ]; then
+            echo "::error::Decision is $DECISION, expected APPROVED"
+            echo "::error::Deploy blocked. Reason codes: $REASON_CODES"
+            exit 1
+          fi
+          
+          # Verify this is a deploy operation (optional, adjust for your use case)
+          if [ "$TOOL" != "deploy" ]; then
+            echo "::warning::Tool is $TOOL, expected 'deploy'"
+          fi
+          
+          echo "decision=$DECISION" >> $GITHUB_OUTPUT
+          echo "✓ Receipt gate passed"
+
+      # Step 2: Deploy (only runs if receipt gate passed)
+      - name: Deploy to ${{ github.event.inputs.environment }}
+        run: |
+          echo "Deploying to ${{ github.event.inputs.environment }}..."
+          echo "Receipt verified: ${{ github.event.inputs.receipt_id }}"
+          echo "Decision: ${{ steps.receipt-gate.outputs.decision }}"
+          
+          # Your actual deploy commands here
+          # Examples:
+          # - kubectl apply -f k8s/
+          # - aws ecs update-service ...
+          # - vercel deploy --prod
+          
+          echo "✓ Deployment complete"
+
+      # Step 3: Record deployment (audit trail)
+      - name: Record Deployment
+        if: success()
+        run: |
+          echo "Recording deployment to audit log..."
+          echo "  Receipt ID: ${{ github.event.inputs.receipt_id }}"
+          echo "  Environment: ${{ github.event.inputs.environment }}"
+          echo "  Commit: ${{ github.sha }}"
+          echo "  Actor: ${{ github.actor }}"
+          echo "  Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
