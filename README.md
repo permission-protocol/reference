@@ -29,3 +29,11 @@ pnpm demo:run --all
 ## CI Receipt Gate
 
 Template: [./templates/github-actions/receipt-gate/](./templates/github-actions/receipt-gate/)
+
+## Questions & Design Partner Requests
+
+- Public questions or feedback:  
+  https://github.com/permission-protocol/reference/issues/new/choose
+
+- Interested in becoming a design partner?  
+  Open a **Design Partner Request** issue with your agent workflow and the actions you want to authorize.
