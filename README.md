@@ -1,9 +1,9 @@
 [![npm version](https://img.shields.io/npm/v/@permission-protocol/sdk)](https://www.npmjs.com/package/@permission-protocol/sdk)
-[![Smoke Test](https://github.com/permission-protocol/reference/actions/workflows/smoke.yml/badge.svg)](https://github.com/permission-protocol/reference/actions/workflows/smoke.yml)
+[![Smoke Test](https://github.com/permission-protocol/docs/actions/workflows/smoke.yml/badge.svg)](https://github.com/permission-protocol/docs/actions/workflows/smoke.yml)
 
-# Permission Protocol — Reference
+# Permission Protocol — Documentation
 
-Reference demo, standard, and CI examples for Permission Protocol.
+Technical specification, playbooks, and advanced examples for Permission Protocol.
 
 > **No receipt = unauthorized autonomy.**
 
@@ -33,10 +33,17 @@ pnpm demo:run --all
 
 Template: [./templates/github-actions/receipt-gate/](./templates/github-actions/receipt-gate/)
 
+## Quick Links
+
+- **Try it now:** [pp-demo](https://github.com/permission-protocol/pp-demo) — fork, install, see it block a PR in 3 minutes
+- **GitHub Action:** [deploy-gate](https://github.com/permission-protocol/deploy-gate)
+- **Python SDK:** [python-sdk](https://github.com/permission-protocol/python-sdk)
+- **Website:** [permissionprotocol.com](https://permissionprotocol.com)
+
 ## Questions & Design Partner Requests
 
-- Public questions or feedback:  
-  https://github.com/permission-protocol/reference/issues/new/choose
+- Public questions or feedback:
+  https://github.com/permission-protocol/docs/issues/new/choose
 
-- Interested in becoming a design partner?  
+- Interested in becoming a design partner?
   Open a **Design Partner Request** issue with your agent workflow and the actions you want to authorize.
